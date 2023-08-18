@@ -6,7 +6,7 @@ Let the GDB is more convenient to use in reverse engineering ( without Python sc
 
 ```shell
 wget -O "$HOME/.rawdbg.gdb" https://github.com/binLep/rawdbg/raw/main/.rawdbg.gdb
-echo "$HOME/.rawdbg.gdb" >> $HOME/.gdbinit
+echo "source $HOME/.rawdbg.gdb" >> $HOME/.gdbinit
 ```
 
 ### example image
