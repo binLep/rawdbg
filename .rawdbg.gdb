@@ -17,7 +17,7 @@ rmlog
 set pagination off
 set confirm off
 set logging redirect
-set logging file /tmp/.gdblog
+eval "set logging file %s",$rawdbg_log_file
 # check architecture
 set logging on
 show architecture
