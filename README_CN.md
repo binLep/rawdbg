@@ -40,4 +40,4 @@ Guile scripting is not supported in this copy of GDB.
 
 ## 示例图片
 
-![](img/example.png)
+![](img/example%20v2.x.png)

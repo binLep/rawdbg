@@ -40,4 +40,4 @@ The following table lists the platforms and architectures that have been tested.
 
 ## Example image
 
-![](img/example.png)
+![](img/example%20v2.x.png)
