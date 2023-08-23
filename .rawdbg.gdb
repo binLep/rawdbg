@@ -1,73 +1,27 @@
-set $rawdbg_log_file = "/tmp/.gdblog"
-set $rawdbg_run_file = "/tmp/.gdbrun"
-set $rawdbg_if_flag = 0
-
-define vmmap
-    info proc mappings
-end
-
-
-define rmlog
-    eval "shell rm -f %s 2>/dev/null",$rawdbg_log_file
-    eval "shell rm -f %s 2>/dev/null",$rawdbg_run_file
-    shell sync
-end
-
-
-# strcmp -> $rawdbg_cmp_result
-define cmp
-    if $argc != 2
-        shell echo "read cmp document"
-        return
-    end
-    eval "shell if test '%s' = '%s' ; then echo 'set $rawdbg_cmp_result=0' > %s ; else echo 'set $rawdbg_cmp_result=1' > %s ; fi",$arg0,$arg1,$rawdbg_run_file,$rawdbg_run_file
-    eval "source %s",$rawdbg_run_file
-    rmlog
-end
-
-
-# check architecture
-# enum $rawdbg_arch_type {
-#     i386,   # 0x00
-#     x86-64, # 0x01
-# }
-define arch
-    set logging on
-    show architecture
-    set logging off
-    eval "shell echo \"set \\$rawdbg_exec_arch=\\\"$(cat %s | sed 's@.*currently \\\"@@g' | sed 's@\\\")\\.@@g' | xargs echo -n)\\\"\" > %s",$rawdbg_log_file,$rawdbg_run_file
-    eval "source %s",$rawdbg_run_file
-    rmlog
-    
-    set $rawdbg_if_flag = 0
-    if $rawdbg_if_flag == 0
-        cmp $rawdbg_exec_arch "i386"
-        if $rawdbg_cmp_result == 0
-            set $rawdbg_arch_type = 0
-            set $rawdbg_if_flag = 1
-        end
-    end
-    
-    if $rawdbg_if_flag == 0
-        cmp $rawdbg_exec_arch "i386:x86-64"
-        if $rawdbg_cmp_result == 0
-            set $rawdbg_arch_type = 1
-            set $rawdbg_if_flag = 1
-        end
-    end
-    
-    if $rawdbg_if_flag == 0
-        eval "shell echo '[-] unsopported architecture: %s'",(char*)$rawdbg_exec_arch
-        return
-    end
-end
-
-
 # -*- init -*-
-rmlog
 set pagination off
 set confirm off
+set disassembly-flavor intel
+define-prefix rawdbg
+
+# platform {
+#     "default": 0,
+#     "linux"  : 1,
+#     "bsd"    : 2,
+# }
+set $rawdbg_platform=2
+set $rawdbg_arch=0
+set $rawdbg_align=4 
+
+# debug mode
+set $rawdbg_debug=1
+
+# logging
+set logging overwrite on
 set logging redirect
+set $RAWDBGPATH = "/root/rawdbg"
+eval "set $rawdbg_log_file =  + \"%s/.gdblog\"",(char *)$RAWDBGPATH
+eval "set $rawdbg_run_file =  + \"%s/.gdbrun\"",(char *)$RAWDBGPATH
 eval "set logging file %s",$rawdbg_log_file
 
 # get width
@@ -76,7 +30,201 @@ show width
 set logging off
 eval "shell echo \"set \\$rawdbg_console_width=$(cat %s | sed 's@.*a line is @@g' | sed 's@\\.@@g' | xargs echo -n)\" > %s",$rawdbg_log_file,$rawdbg_run_file
 eval "source %s",$rawdbg_run_file
-rmlog
+
+# default value
+set $rawdbg_loop_cnt = 4
+set $rawdbg_tmp = 0
+
+
+# @function: rawdbg strcmp
+# @file: lib/rawdbg_strcmp.sh
+# @return: $rawdbg_strcmp_result
+define rawdbg strcmp
+    if $argc != 2
+        shell echo "read rawdbg strcmp document"
+    else
+        eval "shell %s/lib/rawdbg_strcmp.sh %s %s %s",(char *)$RAWDBGPATH,$rawdbg_run_file,$arg0,$arg1
+        eval "source %s",$rawdbg_run_file
+        if $rawdbg_debug == 1
+            eval "shell echo \"[D] [rawdbg strcmp] \\$rawdbg_strcmp_result = %d\"",$rawdbg_strcmp_result
+        end
+    end
+end
+
+
+# @function: rawdbg arch
+# @file: lib/rawdbg_arch.sh
+# @return: $rawdbg_arch
+define rawdbg arch
+    if $argc == 0
+        set logging on
+        show architecture
+        set logging off
+        eval "shell %s/lib/rawdbg_arch.sh %s %s",(char *)$RAWDBGPATH,$rawdbg_log_file,$rawdbg_run_file
+        eval "source %s",$rawdbg_run_file
+        if $rawdbg_debug == 1
+            eval "shell echo \"[D] [rawdbg arch] \\$rawdbg_arch = %d\"",$rawdbg_arch
+        end
+    else
+        shell echo "[-] [rawdbg arch] argument error"
+    end
+end
+
+
+# @function: vmmap
+# @file: lib/vmmap.sh
+define vmmap
+    rawdbg arch
+    if $argc == 0
+        set logging on
+        info proc mappings
+        set logging off
+        eval "shell %s/lib/vmmap.sh %d %s",(char *)$RAWDBGPATH,$rawdbg_platform,$rawdbg_log_file
+    else
+        if $argc == 1
+            set logging on
+            info proc mappings
+            set logging off
+            if $rawdbg_align == 4
+                eval "shell %s/lib/vmmap.sh %d %s %#x",(char *)$RAWDBGPATH,$rawdbg_platform,$rawdbg_log_file,$arg0
+            else
+                eval "shell %s/lib/vmmap.sh %d %s %#llx",(char *)$RAWDBGPATH,$rawdbg_platform,$rawdbg_log_file,$arg0
+            end
+        else
+            shell echo "read vmmap document"
+        end
+    end
+end
+
+
+# @function: rawdbg symbol
+# @file: lib/rawdbg_symbol.sh
+# @return: $rawdbg_symbol_address
+define rawdbg symbol
+    if $argc != 1
+        eval "shell echo \"read rawdbg_symbol document\""
+    else
+        rawdbg arch
+        set $rawdbg_symbol_tmp = $arg0
+        # We need to check whether this address is valid
+        set logging on
+        info proc mappings
+        set logging off
+        if $rawdbg_align == 4
+            eval "shell %s/lib/rawdbg_symbol.sh %d %s %s %#x",(char *)$RAWDBGPATH,$rawdbg_platform,$rawdbg_log_file,$rawdbg_run_file,$rawdbg_symbol_tmp
+        else
+            eval "shell %s/lib/rawdbg_symbol.sh %d %s %s %#llx",(char *)$RAWDBGPATH,$rawdbg_platform,$rawdbg_log_file,$rawdbg_run_file,$rawdbg_symbol_tmp
+        end
+        eval "source %s",$rawdbg_run_file
+        if $rawdbg_debug == 1
+            if $rawdbg_align == 4
+                eval "shell echo \"[D] [rawdbg symbol] \\$rawdbg_symbol_tmp = %#x\"",$rawdbg_symbol_tmp
+            else
+                eval "shell echo \"[D] [rawdbg symbol] \\$rawdbg_symbol_tmp = %#llx\"",$rawdbg_symbol_tmp
+            end
+            eval "shell echo \"[D] [rawdbg symbol] \\$rawdbg_tmp[1]     = %d\"",$rawdbg_tmp
+        end
+        # The address is legal
+        if $rawdbg_tmp == 1
+            set logging on
+            if $rawdbg_align == 4
+                eval "disassemble/r %#x,+1",$rawdbg_symbol_tmp
+            else
+                eval "disassemble/r %#llx,+1",$rawdbg_symbol_tmp
+            end
+            set logging off
+            eval "shell %s/lib/rawdbg_symbol.sh %d %s %s",(char *)$RAWDBGPATH,$rawdbg_platform,$rawdbg_log_file,$rawdbg_run_file
+            eval "source %s",$rawdbg_run_file
+            if $rawdbg_debug == 1
+                eval "shell echo \"[D] [rawdbg symbol] \\$rawdbg_tmp[2]     = %d\"",$rawdbg_tmp
+            end
+        # The address is illegal
+        else
+            set $rawdbg_symbol_addr=""
+        end
+    end
+end
+
+
+# @function: rawdbg loop
+# @file: lib/rawdbg_loop.sh
+# @sample: $rawdbg_loop_cnt default is 4
+define rawdbg loop
+    while 1
+        if $argc == 3
+            set $rawdbg_loop_prev = $arg1
+            set $rawdbg_loop_i = $arg2
+        else
+            if $argc == 2
+                set $rawdbg_loop_prev = $arg1
+            else
+                if $argc != 1
+                    shell echo "[-] read rawdbg loop document"
+                    loop_break
+                end
+                set $rawdbg_loop_prev = 0
+            end
+            set $rawdbg_loop_i = 0
+        end
+        rawdbg arch
+    
+        if $rawdbg_debug == 1
+            eval "shell echo \"\n[D] [rawdbg loop] \\$rawdbg_loop_i   = %d\"",$rawdbg_loop_i
+            eval "shell echo \"[D] [rawdbg loop] \\$rawdbg_loop_cnt = %d\"",$rawdbg_loop_cnt
+        end
+        if $rawdbg_loop_i > $rawdbg_loop_cnt
+            loop_break
+        end
+    
+        set $rawdbg_loop_address = $arg0
+        if $rawdbg_debug == 1
+            if $rawdbg_align == 4
+                eval "shell echo \"[D] [rawdbg loop] \\$rawdbg_loop_address = %#x\"",$rawdbg_loop_address
+            else
+                eval "shell echo \"[D] [rawdbg loop] \\$rawdbg_loop_address = %#llx\"",$rawdbg_loop_address
+            end
+        end
+        # [rawdbg symbol] function return $rawdbg_tmp value
+        rawdbg symbol $rawdbg_loop_address
+        eval "source %s",$rawdbg_run_file
+        # The value is a legal address
+        if $rawdbg_tmp == 1
+            eval "shell echo -n ' → %s'",$rawdbg_symbol_addr
+            set $rawdbg_loop_i = $rawdbg_loop_i + 1
+            set $rawdbg_loop_prev = $rawdbg_loop_address
+            if $rawdbg_align == 4
+                set $rawdbg_tmp = *(int *)$rawdbg_loop_address
+            else
+                set $rawdbg_tmp = *(long long *)$rawdbg_loop_address
+            end
+            rawdbg loop $rawdbg_tmp $rawdbg_loop_prev $rawdbg_loop_i
+        # The value is not an address, determine whether it is a string, and end the loop
+        else
+            if $rawdbg_debug == 1
+                if $rawdbg_align == 4
+                    eval "shell echo \"[D] [rawdbg loop] \\$rawdbg_loop_prev    = %#x\"",$rawdbg_loop_prev
+                else
+                    eval "shell echo \"[D] [rawdbg loop] \\$rawdbg_loop_prev    = %#llx\"",$rawdbg_loop_prev
+                end
+            end
+            if $rawdbg_loop_prev == 0
+            else
+                set logging on
+                if $rawdbg_align == 4
+                    eval "x/s %#x",$rawdbg_loop_prev
+                    eval "x/wx %#x",$rawdbg_loop_prev
+                else
+                    eval "x/s %#llx",$rawdbg_loop_prev
+                    eval "x/gx %#llx",$rawdbg_loop_prev
+                end
+                set logging off
+                shell echo -n " → "
+                eval "shell %s/lib/rawdbg_loop.sh %d %s %s",(char *)$RAWDBGPATH,$rawdbg_platform,$rawdbg_log_file,$rawdbg_run_file
+            end
+        end
+        loop_break
+    end
+end
 
 
 # print title
@@ -88,79 +236,122 @@ end
 # print registers info
 define regs
     printcenter "[ REGISTERS ]"
+    set logging on
     info registers
+    set logging off
+    # eval "shell %s/lib/rawdbg_regs.sh %d %s %s",(char *)$RAWDBGPATH,$rawdbg_platform,$rawdbg_log_file,$rawdbg_run_file
+    set $rawdbg_test = "aaa bbb ccc"
+    rawdbg loop
 end
 
 
 # print pc info
 define disasm
-    arch
-    eval "printcenter \"[ DISASM / %s ]\"",$rawdbg_exec_arch
-    # i386
-    set $rawdbg_if_flag = 0
-    if $rawdbg_if_flag == 0
-        if $rawdbg_arch_type == 0
-            disassemble/m $eip,+30
-            set $rawdbg_if_flag = 1
-        end
+    rawdbg arch
+    eval "printcenter \"[ DISASM / %s ]\"",$rawdbg_arch_name
+    if $rawdbg_arch == 0
+    else
+    if $rawdbg_arch == 1
+        disassemble $eip,+30
+    else
+    if $rawdbg_arch == 2
+        disassemble $rip,+30
     end
-    if $rawdbg_if_flag == 0
-        if $rawdbg_arch_type == 1
-            disassemble/m $rip,+30
-            set $rawdbg_if_flag = 1
-        end
     end
-    if $rawdbg_if_flag == 0
-        eval "shell echo '[-] unsopported architecture: %s'",(char*)$rawdbg_exec_arch
-        return
+    end
+end
+
+
+define rawdbg telescope
+    if $rawdbg_arch == 0
+        eval "shell echo '[-] unsopported architecture: %s'",$rawdbg_arch_name
+        loop_break
+    else
+    if $rawdbg_arch == 1
+        set $rawdbg_telescope_addr=$esp
+    else
+    if $rawdbg_arch == 2
+        set $rawdbg_telescope_addr=$rsp
+    end
+    end
     end
 end
 
 
 # print addrs info
 define telescope
-    arch
-    set $rawdbg_if_flag = 0
-    # i386
-    if $rawdbg_if_flag == 0
-        if $rawdbg_arch_type == 0
-            set $rawdbg_telescope_addr=$esp
-            set $rawdbg_telescope_align=4
-            set $rawdbg_if_flag = 1
-        end
-    end
-    # i386:x86-64
-    if $rawdbg_if_flag == 0
-        if $rawdbg_arch_type == 1
-            set $rawdbg_telescope_addr=$rsp
-            set $rawdbg_telescope_align=8
-            set $rawdbg_if_flag = 1
-        end
-    end
-    if $rawdbg_if_flag == 0
-        eval "shell echo '[-] unsopported architecture: %s'",(char*)$rawdbg_exec_arch
-        return
-    end
-    
-    set $rawdbg_if_flag = 0
-    if $rawdbg_if_flag == 0
+    rawdbg arch
+    while 1
+        rawdbg telescope
+        set $rawdbg_o = 20
         if $argc == 1
             set $rawdbg_telescope_addr=$arg0
-            set $rawdbg_if_flag = 1
-        end
-    end
-    if $rawdbg_if_flag == 0
+        else
+        if $argc == 2
+            set $rawdbg_telescope_addr=$arg0
+            set $rawdbg_o = $arg1
+        else
         if $argc != 0
             shell echo '[-] read telescope document'
-            return
+            loop_break
         end
-    end
+        end
+        end
+        
+        if $rawdbg_debug == 1
+            if $rawdbg_align == 4
+                eval "shell echo \"[D] [telescope] \\$rawdbg_telescope_addr    = %#x\"",$rawdbg_telescope_addr
+            else
+                eval "shell echo \"[D] [telescope] \\$rawdbg_telescope_addr    = %#llx\"",$rawdbg_telescope_addr
+            end
+        end
 
-    set $rawdbg_i = 0
-    while ($rawdbg_i < 8)
-        x/x $rawdbg_telescope_addr
-        set $rawdbg_telescope_addr = $rawdbg_telescope_addr + $rawdbg_telescope_align
-        set $rawdbg_i = $rawdbg_i + 1
+        set $rawdbg_i = 0
+        while ($rawdbg_i < $rawdbg_o)
+            rawdbg symbol $rawdbg_telescope_addr
+            eval "source %s",$rawdbg_run_file
+            # The value is an illegal address
+            if $rawdbg_tmp == 0
+                if $rawdbg_align == 4
+                    eval "shell echo '   %#x'",$rawdbg_telescope_addr
+                else
+                    eval "shell echo '   %#llx'",$rawdbg_telescope_addr
+                end
+            # The value is a legal address
+            else
+                rawdbg symbol $rawdbg_telescope_addr
+                eval "shell echo -n '   %s'",$rawdbg_symbol_addr
+                # check whether pointer of this addr is null
+                if $rawdbg_align == 4
+                    set $rawdbg_telescope_tmp = *(int *)$rawdbg_telescope_addr
+                else
+                    set $rawdbg_telescope_tmp = *(long long *)$rawdbg_telescope_addr
+                end
+                
+                rawdbg symbol $rawdbg_telescope_tmp
+                eval "source %s",$rawdbg_run_file
+                # The value is an illegal address
+                if $rawdbg_tmp == 0
+                    set logging on
+                    if $rawdbg_align == 4
+                        eval "x/s %#x",$rawdbg_telescope_addr
+                        eval "x/wx %#x",$rawdbg_telescope_addr
+                    else
+                        eval "x/s %#llx",$rawdbg_telescope_addr
+                        eval "x/gx %#llx",$rawdbg_telescope_addr
+                    end
+                    set logging off
+                    shell echo -n " → "
+                    eval "shell %s/lib/rawdbg_loop.sh %d %s %s",(char *)$RAWDBGPATH,$rawdbg_platform,$rawdbg_log_file,$rawdbg_run_file
+                else
+                    rawdbg loop $rawdbg_telescope_tmp
+                end
+                shell echo ''
+            end
+            set $rawdbg_telescope_addr = $rawdbg_telescope_addr + $rawdbg_align
+            set $rawdbg_i = $rawdbg_i + 1
+        end
+        loop_break
     end
 end
 
@@ -168,7 +359,8 @@ end
 # print stack info
 define stack
     printcenter "[ STACK ]"
-    telescope
+    rawdbg telescope
+    telescope $rawdbg_telescope_addr 8
 end
 
 
@@ -180,30 +372,29 @@ define context
     backtrace
 end
 
+
 # -*- overwrite execute function
 
-define dsi
+define hook-si
     si
     context
 end
 
 
-define ds
-    si
+define hookpost-s
     context
 end
 
 
-define dni
-    si
+define hookpost-ni
     context
 end
 
 
-define dn
-    n
+define hookpost-n
     context
 end
+
 
 # -*- alias -*-
 alias ctx = context
