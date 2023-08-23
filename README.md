@@ -1,21 +1,27 @@
 # rawdbg
 
+Language：[English](README.md) | [Chinese](README_CN.md)
+
 Let the GDB is more convenient to use in reverse engineering ( without Python scripts )
 
-### How to use
+## How to use
+
+**Way to install**
 
 ```shell
-wget -O "$HOME/.rawdbg.gdb" https://github.com/binLep/rawdbg/raw/main/.rawdbg.gdb
-echo "source $HOME/.rawdbg.gdb" >> $HOME/.gdbinit
+git clone https://github.com/binLep/rawdbg.git
+cd rawdbg
+echo "source $(pwd)/rawdbg.gdb" >> $HOME/.gdbinit
 ```
 
-**new commands**
+**new user-defined commands**
 
-- regs : Print information about important registers.
-- disasm : Enhanced command from command "disassemble".
-- telescope : alias : tel ; Print consecutive address information.
-- stack : alias : telescope ; Execute command "telescope" without arguments.
-- dsi、ds、dni、dn : Enhanced command from commands "si s ni n".
+- regs: Print information about important registers;
+- disasm: Enhanced command from command "disassemble";
+- telescope: Print consecutive address information. Alias: tel;
+- stack: Execute command "telescope" without arguments. Alias: telescope;
+- context: Run the commands regs, disasm, telescope, stack, and backtrace in sequence. Alias: ctx;
+- vmmap: Enhanced command from commands "info proc mappings";
 
 **applicable situation**
 
@@ -24,6 +30,14 @@ Scripting in the "Python" language is not supported in this copy of GDB.
 Guile scripting is not supported in this copy of GDB.
 ```
 
-### example image
+## Support details
+
+The following table lists the platforms and architectures that have been tested.
+
+|         | Linux  | FreeBSD |
+| :----:  | :----: | :----:  |
+| i386    | ×      | √       |
+
+## Example image
 
 ![](img/example.png)

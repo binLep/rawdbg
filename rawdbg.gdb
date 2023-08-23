@@ -14,14 +14,14 @@ set $rawdbg_arch=0
 set $rawdbg_align=4 
 
 # debug mode
-set $rawdbg_debug=1
+set $rawdbg_debug=0
 
 # logging
 set logging overwrite on
 set logging redirect
 set $RAWDBGPATH = "/root/rawdbg"
-eval "set $rawdbg_log_file =  + \"%s/.gdblog\"",(char *)$RAWDBGPATH
-eval "set $rawdbg_run_file =  + \"%s/.gdbrun\"",(char *)$RAWDBGPATH
+eval "set $rawdbg_log_file = \"%s/.gdblog\"",$RAWDBGPATH
+eval "set $rawdbg_run_file = \"%s/.gdbrun\"",$RAWDBGPATH
 eval "set logging file %s",$rawdbg_log_file
 
 # get width
@@ -104,43 +104,52 @@ define rawdbg symbol
     if $argc != 1
         eval "shell echo \"read rawdbg_symbol document\""
     else
-        rawdbg arch
         set $rawdbg_symbol_tmp = $arg0
-        # We need to check whether this address is valid
         set logging on
-        info proc mappings
+        output $rawdbg_symbol_tmp
         set logging off
-        if $rawdbg_align == 4
-            eval "shell %s/lib/rawdbg_symbol.sh %d %s %s %#x",(char *)$RAWDBGPATH,$rawdbg_platform,$rawdbg_log_file,$rawdbg_run_file,$rawdbg_symbol_tmp
-        else
-            eval "shell %s/lib/rawdbg_symbol.sh %d %s %s %#llx",(char *)$RAWDBGPATH,$rawdbg_platform,$rawdbg_log_file,$rawdbg_run_file,$rawdbg_symbol_tmp
-        end
+        eval "shell %s/lib/rawdbg_unavailable.sh %s %s",(char *)$RAWDBGPATH,$rawdbg_log_file,$rawdbg_run_file
         eval "source %s",$rawdbg_run_file
-        if $rawdbg_debug == 1
-            if $rawdbg_align == 4
-                eval "shell echo \"[D] [rawdbg symbol] \\$rawdbg_symbol_tmp = %#x\"",$rawdbg_symbol_tmp
-            else
-                eval "shell echo \"[D] [rawdbg symbol] \\$rawdbg_symbol_tmp = %#llx\"",$rawdbg_symbol_tmp
-            end
-            eval "shell echo \"[D] [rawdbg symbol] \\$rawdbg_tmp[1]     = %d\"",$rawdbg_tmp
-        end
-        # The address is legal
-        if $rawdbg_tmp == 1
+        if $rawdbg_tmp == 2
+            set $rawdbg_symbol_addr=""
+        else
+            rawdbg arch
+            # We need to check whether this address is valid
             set logging on
-            if $rawdbg_align == 4
-                eval "disassemble/r %#x,+1",$rawdbg_symbol_tmp
-            else
-                eval "disassemble/r %#llx,+1",$rawdbg_symbol_tmp
-            end
+            info proc mappings
             set logging off
-            eval "shell %s/lib/rawdbg_symbol.sh %d %s %s",(char *)$RAWDBGPATH,$rawdbg_platform,$rawdbg_log_file,$rawdbg_run_file
+            if $rawdbg_align == 4
+                eval "shell %s/lib/rawdbg_symbol.sh %d %s %s %#x",(char *)$RAWDBGPATH,$rawdbg_platform,$rawdbg_log_file,$rawdbg_run_file,$rawdbg_symbol_tmp
+            else
+                eval "shell %s/lib/rawdbg_symbol.sh %d %s %s %#llx",(char *)$RAWDBGPATH,$rawdbg_platform,$rawdbg_log_file,$rawdbg_run_file,$rawdbg_symbol_tmp
+            end
             eval "source %s",$rawdbg_run_file
             if $rawdbg_debug == 1
-                eval "shell echo \"[D] [rawdbg symbol] \\$rawdbg_tmp[2]     = %d\"",$rawdbg_tmp
+                if $rawdbg_align == 4
+                    eval "shell echo \"[D] [rawdbg symbol] \\$rawdbg_symbol_tmp = %#x\"",$rawdbg_symbol_tmp
+                else
+                    eval "shell echo \"[D] [rawdbg symbol] \\$rawdbg_symbol_tmp = %#llx\"",$rawdbg_symbol_tmp
+                end
+                eval "shell echo \"[D] [rawdbg symbol] \\$rawdbg_tmp[1]     = %d\"",$rawdbg_tmp
             end
-        # The address is illegal
-        else
-            set $rawdbg_symbol_addr=""
+            # The address is legal
+            if $rawdbg_tmp == 1
+                set logging on
+                if $rawdbg_align == 4
+                    eval "disassemble/r %#x,+1",$rawdbg_symbol_tmp
+                else
+                    eval "disassemble/r %#llx,+1",$rawdbg_symbol_tmp
+                end
+                set logging off
+                eval "shell %s/lib/rawdbg_symbol.sh %d %s %s",(char *)$RAWDBGPATH,$rawdbg_platform,$rawdbg_log_file,$rawdbg_run_file
+                eval "source %s",$rawdbg_run_file
+                if $rawdbg_debug == 1
+                    eval "shell echo \"[D] [rawdbg symbol] \\$rawdbg_tmp[2]     = %d\"",$rawdbg_tmp
+                end
+            # The address is illegal
+            else
+                set $rawdbg_symbol_addr=""
+            end
         end
     end
 end
@@ -186,7 +195,6 @@ define rawdbg loop
         end
         # [rawdbg symbol] function return $rawdbg_tmp value
         rawdbg symbol $rawdbg_loop_address
-        eval "source %s",$rawdbg_run_file
         # The value is a legal address
         if $rawdbg_tmp == 1
             eval "shell echo -n ' → %s'",$rawdbg_symbol_addr
@@ -236,12 +244,12 @@ end
 # print registers info
 define regs
     printcenter "[ REGISTERS ]"
+    rawdbg arch
     set logging on
     info registers
     set logging off
-    # eval "shell %s/lib/rawdbg_regs.sh %d %s %s",(char *)$RAWDBGPATH,$rawdbg_platform,$rawdbg_log_file,$rawdbg_run_file
-    set $rawdbg_test = "aaa bbb ccc"
-    rawdbg loop
+    eval "shell %s/lib/rawdbg_regs.sh %s %s %d",(char *)$RAWDBGPATH,$rawdbg_log_file,$rawdbg_run_file,$rawdbg_arch
+    eval "source %s",$rawdbg_run_file
 end
 
 
@@ -309,7 +317,6 @@ define telescope
         set $rawdbg_i = 0
         while ($rawdbg_i < $rawdbg_o)
             rawdbg symbol $rawdbg_telescope_addr
-            eval "source %s",$rawdbg_run_file
             # The value is an illegal address
             if $rawdbg_tmp == 0
                 if $rawdbg_align == 4
@@ -319,7 +326,6 @@ define telescope
                 end
             # The value is a legal address
             else
-                rawdbg symbol $rawdbg_telescope_addr
                 eval "shell echo -n '   %s'",$rawdbg_symbol_addr
                 # check whether pointer of this addr is null
                 if $rawdbg_align == 4
@@ -329,7 +335,6 @@ define telescope
                 end
                 
                 rawdbg symbol $rawdbg_telescope_tmp
-                eval "source %s",$rawdbg_run_file
                 # The value is an illegal address
                 if $rawdbg_tmp == 0
                     set logging on
@@ -375,23 +380,22 @@ end
 
 # -*- overwrite execute function
 
-define hook-si
-    si
+define hook-stepi
     context
 end
 
 
-define hookpost-s
+define hook-step
     context
 end
 
 
-define hookpost-ni
+define hook-nexti
     context
 end
 
 
-define hookpost-n
+define hook-next
     context
 end
 
