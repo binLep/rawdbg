@@ -34,9 +34,10 @@ Guile scripting is not supported in this copy of GDB.
 
 下表列出了已测试的平台和体系结构
 
-|         | Linux  | FreeBSD |
-| :----:  | :----: | :----:  |
-| i386    | ×      | √       |
+|             | Linux | FreeBSD |
+| :---------: | :---: | :-----: |
+| i386        | ×     | √       |
+| i386:x86-64 | ×     | √       |
 
 ## 示例图片
 

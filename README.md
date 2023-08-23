@@ -2,7 +2,7 @@
 
 Language：[English](README.md) | [Chinese](README_CN.md)
 
-Let the GDB is more convenient to use in reverse engineering ( without Python scripts )
+Let the GDB is more convenient to use in reverse engineering ( without GDB Python scripts )
 
 ## How to use
 
@@ -34,9 +34,10 @@ Guile scripting is not supported in this copy of GDB.
 
 The following table lists the platforms and architectures that have been tested.
 
-|         | Linux  | FreeBSD |
-| :----:  | :----: | :----:  |
-| i386    | ×      | √       |
+|             | Linux | FreeBSD |
+| :---------: | :---: | :-----: |
+| i386        | ×     | √       |
+| i386:x86-64 | ×     | √       |
 
 ## Example image
 

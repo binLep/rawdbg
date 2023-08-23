@@ -380,22 +380,26 @@ end
 
 # -*- overwrite execute function
 
-define hook-stepi
+define si
+    stepi
     context
 end
 
 
-define hook-step
+define s
+    step
     context
 end
 
 
-define hook-nexti
+define ni
+    nexti
     context
 end
 
 
-define hook-next
+define n
+    next
     context
 end
 
